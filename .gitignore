@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.ccapi/
+*.log
+.DS_Store
