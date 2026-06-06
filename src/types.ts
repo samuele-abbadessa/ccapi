@@ -34,6 +34,7 @@ export interface RunResult {
 export interface Session {
   id: string;
   title: string | null;
+  started: boolean;
   createdAt: number;
   updatedAt: number;
 }

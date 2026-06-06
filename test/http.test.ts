@@ -15,7 +15,12 @@ describe("HTTP API", () => {
   beforeEach(async () => {
     repo = new Repository(openDatabase(":memory:"));
     // fixture fake-claude: riemette il prompt da stdin (vedi test orchestrator).
-    const orchestrator = new Orchestrator({ claudeBin: FAKE_CLAUDE, cwd: process.cwd() });
+    const orchestrator = new Orchestrator({
+      claudeBin: FAKE_CLAUDE,
+      cwd: process.cwd(),
+      isStarted: (id) => repo.isStarted(id),
+      markStarted: (id) => repo.markStarted(id),
+    });
     app = buildServer({ repo, orchestrator, now: () => 1000 });
     await app.ready();
   });

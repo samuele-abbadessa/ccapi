@@ -11,6 +11,11 @@ export function openDatabase(dbPath: string): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   applySchema(db);
+  // Migrazione idempotente: aggiunge `started` se un DB preesistente non la ha.
+  const cols = db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "started")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN started INTEGER NOT NULL DEFAULT 0");
+  }
   return db;
 }
 
@@ -19,6 +24,7 @@ function applySchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS sessions (
       id          TEXT PRIMARY KEY,
       title       TEXT,
+      started     INTEGER NOT NULL DEFAULT 0,
       created_at  INTEGER NOT NULL,
       updated_at  INTEGER NOT NULL
     );

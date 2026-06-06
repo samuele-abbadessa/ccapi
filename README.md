@@ -8,7 +8,7 @@ Ispirato a [OpenCode Server](https://opencode.ai). Consente di controllare conve
 
 ## Modello chiave
 
-Per ogni messaggio il server spawna un processo **effimero** `claude -p` (prompt via STDIN). La **continuità della conversazione** non è data da un processo persistente, ma dal transcript che Claude Code salva su disco: ogni sessione ha un UUID generato alla creazione; quel UUID viene passato come `--session-id` ad ogni invocazione successiva, permettendo a Claude di riprendere il contesto.
+Per ogni messaggio il server spawna un processo **effimero** `claude -p` (prompt via STDIN). La **continuità della conversazione** non è data da un processo persistente, ma dal transcript che Claude Code salva su disco: ogni sessione ha un UUID generato alla creazione. La **prima** invocazione usa `--session-id <uuid>` per creare il transcript; le invocazioni **successive** usano `--resume <uuid>` per riprendere il contesto (riusare `--session-id` su una sessione già esistente fallisce).
 
 Il registro SQLite è una **vista per l'API** (prompt utente + risposta finale). Non re-inietta contesto nel prompt e non sostituisce il transcript di Claude.
 

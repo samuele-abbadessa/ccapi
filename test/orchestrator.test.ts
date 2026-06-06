@@ -6,16 +6,21 @@ import { Orchestrator } from "../src/orchestrator/orchestrator.js";
 
 const FAKE_CLAUDE = fileURLToPath(new URL("./fixtures/fake-claude.sh", import.meta.url));
 const SLOW_CLAUDE = fileURLToPath(new URL("./fixtures/slow-claude.sh", import.meta.url));
+const ECHO_ARGS = fileURLToPath(new URL("./fixtures/echo-args.sh", import.meta.url));
 
 describe("buildArgs", () => {
   it("include session-id e flag opzionali", () => {
-    const args = buildArgs("sess-1", {
-      prompt: "x",
-      model: "opus",
-      effort: "high",
-      outputFormat: "json",
-      jsonSchema: { type: "object" },
-    });
+    const args = buildArgs(
+      "sess-1",
+      {
+        prompt: "x",
+        model: "opus",
+        effort: "high",
+        outputFormat: "json",
+        jsonSchema: { type: "object" },
+      },
+      false,
+    );
     expect(args).toEqual([
       "-p",
       "--session-id",
@@ -32,7 +37,11 @@ describe("buildArgs", () => {
   });
 
   it("omette i flag non forniti", () => {
-    expect(buildArgs("s", { prompt: "x" })).toEqual(["-p", "--session-id", "s"]);
+    expect(buildArgs("s", { prompt: "x" }, false)).toEqual(["-p", "--session-id", "s"]);
+  });
+
+  it("usa --resume quando resume=true", () => {
+    expect(buildArgs("s", { prompt: "x" }, true)).toEqual(["-p", "--resume", "s"]);
   });
 });
 
@@ -69,7 +78,13 @@ describe("parseOutput", () => {
 describe("Orchestrator serializzazione", () => {
   it("usa il fixture fake-claude e serializza due messaggi sulla stessa sessione", async () => {
     // fake-claude.sh ignora gli argomenti, ecoa stdin, exit 0.
-    const orch = new Orchestrator({ claudeBin: FAKE_CLAUDE, cwd: process.cwd() });
+    const started = new Set<string>();
+    const orch = new Orchestrator({
+      claudeBin: FAKE_CLAUDE,
+      cwd: process.cwd(),
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
     const [a, b] = await Promise.all([
       orch.submit("s1", { prompt: "primo" }),
       orch.submit("s1", { prompt: "secondo" }),
@@ -83,7 +98,13 @@ describe("Orchestrator serializzazione", () => {
 describe("Orchestrator abort", () => {
   it("abort del messaggio in corso lo rigetta con AbortedError", async () => {
     // slow-claude resta vivo ~2s: c'è tempo di chiamare abort mentre è attivo.
-    const orch = new Orchestrator({ claudeBin: SLOW_CLAUDE, cwd: process.cwd() });
+    const started = new Set<string>();
+    const orch = new Orchestrator({
+      claudeBin: SLOW_CLAUDE,
+      cwd: process.cwd(),
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
     const pending = orch.submit("s1", { prompt: "x" });
     // Attacca subito l'handler di rejection (evita unhandled rejection).
     const assertion = expect(pending).rejects.toBeInstanceOf(AbortedError);
@@ -96,7 +117,13 @@ describe("Orchestrator abort", () => {
   });
 
   it("abort rigetta con AbortedError anche i messaggi in coda", async () => {
-    const orch = new Orchestrator({ claudeBin: SLOW_CLAUDE, cwd: process.cwd() });
+    const started = new Set<string>();
+    const orch = new Orchestrator({
+      claudeBin: SLOW_CLAUDE,
+      cwd: process.cwd(),
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
     const first = orch.submit("s1", { prompt: "primo" });
     const queued = orch.submit("s1", { prompt: "secondo" });
     // Attacca subito gli handler: abort rigetta la coda in modo sincrono.
@@ -107,5 +134,21 @@ describe("Orchestrator abort", () => {
     await new Promise((r) => setTimeout(r, 150));
     orch.abort("s1");
     await assertions;
+  });
+});
+
+describe("Orchestrator resume", () => {
+  it("prima invocazione usa --session-id, la successiva --resume", async () => {
+    const started = new Set<string>();
+    const orch = new Orchestrator({
+      claudeBin: ECHO_ARGS,
+      cwd: process.cwd(),
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
+    const r1 = await orch.submit("s1", { prompt: "x" });
+    expect((r1.parts[0] as { text: string }).text).toContain("--session-id");
+    const r2 = await orch.submit("s1", { prompt: "x" });
+    expect((r2.parts[0] as { text: string }).text).toContain("--resume");
   });
 });

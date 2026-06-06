@@ -11,6 +11,8 @@ interface QueueItem {
 export interface OrchestratorOptions {
   claudeBin: string;
   cwd: string;
+  isStarted: (sessionId: string) => boolean;
+  markStarted: (sessionId: string) => void;
 }
 
 /**
@@ -71,13 +73,15 @@ export class Orchestrator {
     const item = queue?.shift();
     if (!item) return;
 
-    const handle = runClaude(this.opts.claudeBin, this.opts.cwd, sessionId, item.opts);
+    const resume = this.opts.isStarted(sessionId);
+    const handle = runClaude(this.opts.claudeBin, this.opts.cwd, sessionId, item.opts, resume);
     this.active.set(sessionId, handle);
 
     handle.promise.then(
       (result) => {
         this.active.delete(sessionId);
         this.aborting.delete(sessionId);
+        this.opts.markStarted(sessionId); // transcript creato: le prossime usano --resume
         item.resolve(result);
         this.tryNext(sessionId);
       },

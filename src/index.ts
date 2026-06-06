@@ -9,7 +9,12 @@ async function main(): Promise<void> {
   const config = resolveConfig();
   const db = openDatabase(config.dbPath);
   const repo = new Repository(db);
-  const orchestrator = new Orchestrator({ claudeBin: config.claudeBin, cwd: process.cwd() });
+  const orchestrator = new Orchestrator({
+    claudeBin: config.claudeBin,
+    cwd: process.cwd(),
+    isStarted: (id) => repo.isStarted(id),
+    markStarted: (id) => repo.markStarted(id),
+  });
   const app = buildServer({ repo, orchestrator });
 
   let shuttingDown = false;

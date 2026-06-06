@@ -6,8 +6,10 @@ import { ProcessError } from "./errors.js";
 const KILL_GRACE_MS = 2000;
 
 /** Costruisce gli argomenti CLI per `claude -p`. */
-export function buildArgs(sessionId: string, opts: MessageOptions): string[] {
-  const args = ["-p", "--session-id", sessionId];
+export function buildArgs(sessionId: string, opts: MessageOptions, resume: boolean): string[] {
+  const args = ["-p"];
+  if (resume) args.push("--resume", sessionId);
+  else args.push("--session-id", sessionId);
   if (opts.model) args.push("--model", opts.model);
   if (opts.effort) args.push("--effort", opts.effort);
   if (opts.outputFormat === "json") {
@@ -70,8 +72,9 @@ export function runClaude(
   cwd: string,
   sessionId: string,
   opts: MessageOptions,
+  resume: boolean,
 ): RunHandle {
-  const child = spawn(claudeBin, buildArgs(sessionId, opts), { cwd });
+  const child = spawn(claudeBin, buildArgs(sessionId, opts, resume), { cwd });
 
   let stdout = "";
   let stderr = "";

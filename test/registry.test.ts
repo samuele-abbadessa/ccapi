@@ -37,6 +37,13 @@ describe("Repository", () => {
     expect(msgs[1]?.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
   });
 
+  it("isStarted/markStarted tracciano l'avvio della sessione", () => {
+    const s = repo.createSession(null, 1000);
+    expect(repo.isStarted(s.id)).toBe(false);
+    repo.markStarted(s.id);
+    expect(repo.isStarted(s.id)).toBe(true);
+  });
+
   it("elimina una sessione e i suoi messaggi (cascade)", () => {
     const s = repo.createSession(null, 1000);
     repo.addMessage({ sessionId: s.id, role: "user", parts: [{ type: "text", text: "x" }] }, 1001);

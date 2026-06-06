@@ -5,6 +5,7 @@ import type { Message, MessageRole, MessageStatus, Part, Session, TokenUsage } f
 interface SessionRow {
   id: string;
   title: string | null;
+  started: number;
   created_at: number;
   updated_at: number;
 }
@@ -41,9 +42,24 @@ export class Repository {
   createSession(title: string | null, now: number): Session {
     const id = randomUUID();
     this.db
-      .prepare("INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)")
+      .prepare(
+        "INSERT INTO sessions (id, title, started, created_at, updated_at) VALUES (?, ?, 0, ?, ?)",
+      )
       .run(id, title, now, now);
-    return { id, title, createdAt: now, updatedAt: now };
+    return { id, title, started: false, createdAt: now, updatedAt: now };
+  }
+
+  /** true se la sessione è già stata avviata su Claude (transcript creato). */
+  isStarted(id: string): boolean {
+    const row = this.db.prepare("SELECT started FROM sessions WHERE id = ?").get(id) as
+      | { started: number }
+      | undefined;
+    return row?.started === 1;
+  }
+
+  /** Marca la sessione come avviata su Claude (dopo la prima invocazione riuscita). */
+  markStarted(id: string): void {
+    this.db.prepare("UPDATE sessions SET started = 1 WHERE id = ?").run(id);
   }
 
   getSession(id: string): Session | undefined {
@@ -122,6 +138,7 @@ function mapSession(row: SessionRow): Session {
   return {
     id: row.id,
     title: row.title,
+    started: row.started === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
