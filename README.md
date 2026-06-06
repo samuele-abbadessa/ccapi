@@ -115,5 +115,6 @@ curl -s -X POST http://localhost:4096/sessions/$SESSION/messages \
 
 ## Documentazione
 
+- **Guida d'uso** (riferimento API completo, esempi, troubleshooting): [`docs/USAGE.md`](docs/USAGE.md)
 - Specifiche dettagliate: [`docs/specs/2026-06-06-ccapi-core.md`](docs/specs/2026-06-06-ccapi-core.md)
 - Feature future e backlog: [`docs/BACKLOG.md`](docs/BACKLOG.md)
