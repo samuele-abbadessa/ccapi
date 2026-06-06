@@ -1,0 +1,111 @@
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { buildArgs, parseOutput } from "../src/orchestrator/claude.js";
+import { AbortedError } from "../src/orchestrator/errors.js";
+import { Orchestrator } from "../src/orchestrator/orchestrator.js";
+
+const FAKE_CLAUDE = fileURLToPath(new URL("./fixtures/fake-claude.sh", import.meta.url));
+const SLOW_CLAUDE = fileURLToPath(new URL("./fixtures/slow-claude.sh", import.meta.url));
+
+describe("buildArgs", () => {
+  it("include session-id e flag opzionali", () => {
+    const args = buildArgs("sess-1", {
+      prompt: "x",
+      model: "opus",
+      effort: "high",
+      outputFormat: "json",
+      jsonSchema: { type: "object" },
+    });
+    expect(args).toEqual([
+      "-p",
+      "--session-id",
+      "sess-1",
+      "--model",
+      "opus",
+      "--effort",
+      "high",
+      "--output-format",
+      "json",
+      "--json-schema",
+      '{"type":"object"}',
+    ]);
+  });
+
+  it("omette i flag non forniti", () => {
+    expect(buildArgs("s", { prompt: "x" })).toEqual(["-p", "--session-id", "s"]);
+  });
+});
+
+describe("parseOutput", () => {
+  it("text mode: ritorna una part text", () => {
+    const r = parseOutput("  ciao  ", { prompt: "x" });
+    expect(r.parts).toEqual([{ type: "text", text: "ciao" }]);
+  });
+
+  it("json mode: estrae structured_output, model, cost, usage", () => {
+    const stdout = JSON.stringify({
+      result: "ignored",
+      structured_output: { ok: true },
+      model: "claude-opus-4-8",
+      total_cost_usd: 0.01,
+      usage: { input_tokens: 100, output_tokens: 20 },
+    });
+    const r = parseOutput(stdout, { prompt: "x", outputFormat: "json" });
+    expect(r.parts).toEqual([{ type: "structured", data: { ok: true } }]);
+    expect(r.model).toBe("claude-opus-4-8");
+    expect(r.costUsd).toBe(0.01);
+    expect(r.usage).toEqual({ inputTokens: 100, outputTokens: 20 });
+  });
+
+  it("json mode senza structured_output: usa result come text", () => {
+    const r = parseOutput(JSON.stringify({ result: "risposta" }), {
+      prompt: "x",
+      outputFormat: "json",
+    });
+    expect(r.parts).toEqual([{ type: "text", text: "risposta" }]);
+  });
+});
+
+describe("Orchestrator serializzazione", () => {
+  it("usa il fixture fake-claude e serializza due messaggi sulla stessa sessione", async () => {
+    // fake-claude.sh ignora gli argomenti, ecoa stdin, exit 0.
+    const orch = new Orchestrator({ claudeBin: FAKE_CLAUDE, cwd: process.cwd() });
+    const [a, b] = await Promise.all([
+      orch.submit("s1", { prompt: "primo" }),
+      orch.submit("s1", { prompt: "secondo" }),
+    ]);
+    expect(a.parts).toEqual([{ type: "text", text: "primo" }]);
+    expect(b.parts).toEqual([{ type: "text", text: "secondo" }]);
+    expect(orch.isBusy("s1")).toBe(false);
+  });
+});
+
+describe("Orchestrator abort", () => {
+  it("abort del messaggio in corso lo rigetta con AbortedError", async () => {
+    // slow-claude resta vivo ~2s: c'è tempo di chiamare abort mentre è attivo.
+    const orch = new Orchestrator({ claudeBin: SLOW_CLAUDE, cwd: process.cwd() });
+    const pending = orch.submit("s1", { prompt: "x" });
+    // Attacca subito l'handler di rejection (evita unhandled rejection).
+    const assertion = expect(pending).rejects.toBeInstanceOf(AbortedError);
+    // Lascia partire il processo, poi interrompi.
+    await new Promise((r) => setTimeout(r, 150));
+    expect(orch.isBusy("s1")).toBe(true);
+    orch.abort("s1");
+    await assertion;
+    expect(orch.isBusy("s1")).toBe(false);
+  });
+
+  it("abort rigetta con AbortedError anche i messaggi in coda", async () => {
+    const orch = new Orchestrator({ claudeBin: SLOW_CLAUDE, cwd: process.cwd() });
+    const first = orch.submit("s1", { prompt: "primo" });
+    const queued = orch.submit("s1", { prompt: "secondo" });
+    // Attacca subito gli handler: abort rigetta la coda in modo sincrono.
+    const assertions = Promise.all([
+      expect(first).rejects.toBeInstanceOf(AbortedError),
+      expect(queued).rejects.toBeInstanceOf(AbortedError),
+    ]);
+    await new Promise((r) => setTimeout(r, 150));
+    orch.abort("s1");
+    await assertions;
+  });
+});
