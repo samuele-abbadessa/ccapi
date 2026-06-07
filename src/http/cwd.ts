@@ -49,5 +49,8 @@ export function assertBaseDir(base: string): string {
   if (!statSync(real).isDirectory()) {
     throw new Error(`--detached-cwd: la radice "${base}" non è una directory`);
   }
+  if (real === "/") {
+    throw new Error(`--detached-cwd: la radice "/" non è ammessa (disattiverebbe la sandbox)`);
+  }
   return real;
 }
