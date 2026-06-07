@@ -116,7 +116,20 @@ export function registerMessageRoutes(app: FastifyInstance, deps: Deps): void {
         );
         return reply.code(502).send({ error: { code: "process_error", message: err.message } });
       }
-      throw err;
+      // Errore inatteso (né AbortedError né ProcessError): persisti comunque un
+      // assistant 'failed' per non lasciare il messaggio user orfano.
+      const message = err instanceof Error ? err.message : String(err);
+      repo.addMessage(
+        {
+          sessionId: session.id,
+          role: "assistant",
+          parts: [],
+          status: "failed",
+          error: message,
+        },
+        now(),
+      );
+      return reply.code(500).send({ error: { code: "internal", message: "Errore interno" } });
     }
   });
 }

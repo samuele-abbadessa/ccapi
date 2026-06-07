@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/http/server.js";
+import { AbortedError, ProcessError } from "../src/orchestrator/errors.js";
 import { Orchestrator } from "../src/orchestrator/orchestrator.js";
 import { openDatabase } from "../src/registry/db.js";
 import { Repository } from "../src/registry/repository.js";
@@ -159,6 +160,138 @@ describe("HTTP API — detached cwd", () => {
     const res = await a.inject({ method: "POST", url: "/sessions", payload: { cwd: ".." } });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe("cwd_outside_base");
+    await a.close();
+  });
+});
+
+describe("HTTP API — edge cases", () => {
+  let app: FastifyInstance;
+  let repo: Repository;
+
+  beforeEach(async () => {
+    repo = new Repository(openDatabase(":memory:"));
+    const orchestrator = new Orchestrator({
+      claudeBin: FAKE_CLAUDE,
+      isStarted: (id) => repo.isStarted(id),
+      markStarted: (id) => repo.markStarted(id),
+    });
+    app = buildServer({
+      repo,
+      orchestrator,
+      now: () => 1000,
+      detachedCwdBase: null,
+      defaultCwd: process.cwd(),
+    });
+    await app.ready();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  // Costruisce un'app con un orchestrator fasullo che rigetta col dato errore.
+  function buildAppRejecting(err: Error): { app: FastifyInstance; repo: Repository } {
+    const r = new Repository(openDatabase(":memory:"));
+    const orchestrator = {
+      submit: () => Promise.reject(err),
+      isBusy: () => false,
+      abort: () => {},
+      shutdown: () => {},
+    } as unknown as Orchestrator;
+    const a = buildServer({
+      repo: r,
+      orchestrator,
+      now: () => 1000,
+      detachedCwdBase: null,
+      defaultCwd: process.cwd(),
+    });
+    return { app: a, repo: r };
+  }
+
+  it("PATCH su sessione inesistente → 404", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/sessions/non-esiste",
+      payload: { title: "x" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("GET messaggio di un'altra sessione → 404 (cross-session)", async () => {
+    const s1 = (await app.inject({ method: "POST", url: "/sessions", payload: {} })).json();
+    const s2 = (await app.inject({ method: "POST", url: "/sessions", payload: {} })).json();
+    // crea un messaggio in s1 inviandone uno (FAKE_CLAUDE ecoa)
+    await app.inject({
+      method: "POST",
+      url: `/sessions/${s1.id}/messages`,
+      payload: { prompt: "ciao" },
+    });
+    const msgs = (await app.inject({ method: "GET", url: `/sessions/${s1.id}/messages` })).json();
+    const msgId = msgs[0].info.id as string;
+    // stesso msgId ma sotto s2 → 404
+    const res = await app.inject({ method: "GET", url: `/sessions/${s2.id}/messages/${msgId}` });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("prompt oltre 10 MB → 413 (body too large, Fastify intercetta prima del route handler)", async () => {
+    const s = (await app.inject({ method: "POST", url: "/sessions", payload: {} })).json();
+    const bigPrompt = "a".repeat(10 * 1024 * 1024 + 1);
+    const res = await app.inject({
+      method: "POST",
+      url: `/sessions/${s.id}/messages`,
+      payload: { prompt: bigPrompt },
+    });
+    // Fastify rigetta a livello di body parser (413) prima che il route handler
+    // possa verificare MAX_PROMPT_BYTES e restituire 400 prompt_too_large.
+    expect(res.statusCode).toBe(413);
+  });
+
+  it("abort durante un messaggio → 409 aborted + assistant 'aborted' persistito", async () => {
+    const { app: a, repo: r } = buildAppRejecting(new AbortedError());
+    await a.ready();
+    const s = (await a.inject({ method: "POST", url: "/sessions", payload: {} })).json();
+    const res = await a.inject({
+      method: "POST",
+      url: `/sessions/${s.id}/messages`,
+      payload: { prompt: "x" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("aborted");
+    const msgs = r.listMessages(s.id);
+    expect(msgs.at(-1)?.status).toBe("aborted");
+    await a.close();
+  });
+
+  it("errore processo claude → 502 + assistant 'failed'", async () => {
+    const { app: a, repo: r } = buildAppRejecting(new ProcessError(1, "boom"));
+    await a.ready();
+    const s = (await a.inject({ method: "POST", url: "/sessions", payload: {} })).json();
+    const res = await a.inject({
+      method: "POST",
+      url: `/sessions/${s.id}/messages`,
+      payload: { prompt: "x" },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error.code).toBe("process_error");
+    expect(r.listMessages(s.id).at(-1)?.status).toBe("failed");
+    await a.close();
+  });
+
+  it("errore inatteso → 500 + assistant 'failed' (no messaggio user orfano)", async () => {
+    const { app: a, repo: r } = buildAppRejecting(new Error("boom inatteso"));
+    await a.ready();
+    const s = (await a.inject({ method: "POST", url: "/sessions", payload: {} })).json();
+    const res = await a.inject({
+      method: "POST",
+      url: `/sessions/${s.id}/messages`,
+      payload: { prompt: "x" },
+    });
+    expect(res.statusCode).toBe(500);
+    const msgs = r.listMessages(s.id);
+    // user + assistant(failed): la history NON resta con il solo user
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]?.role).toBe("user");
+    expect(msgs[1]?.status).toBe("failed");
     await a.close();
   });
 });
