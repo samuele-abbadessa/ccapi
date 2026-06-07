@@ -35,6 +35,8 @@ export interface Session {
   id: string;
   title: string | null;
   started: boolean;
+  /** Working directory della sessione (path assoluto). null solo per sessioni legacy pre-feature. */
+  cwd: string | null;
   createdAt: number;
   updatedAt: number;
 }

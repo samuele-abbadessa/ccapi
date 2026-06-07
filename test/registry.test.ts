@@ -10,12 +10,13 @@ describe("Repository", () => {
   });
 
   it("crea e recupera una sessione", () => {
-    const s = repo.createSession("titolo", 1000);
+    const s = repo.createSession("titolo", "/tmp/work", 1000);
     expect(repo.getSession(s.id)).toEqual(s);
+    expect(s.cwd).toBe("/tmp/work");
   });
 
   it("aggiunge messaggi e li lista in ordine cronologico", () => {
-    const s = repo.createSession(null, 1000);
+    const s = repo.createSession(null, null, 1000);
     repo.addMessage(
       { sessionId: s.id, role: "user", parts: [{ type: "text", text: "ciao" }] },
       1001,
@@ -38,14 +39,19 @@ describe("Repository", () => {
   });
 
   it("isStarted/markStarted tracciano l'avvio della sessione", () => {
-    const s = repo.createSession(null, 1000);
+    const s = repo.createSession(null, null, 1000);
     expect(repo.isStarted(s.id)).toBe(false);
     repo.markStarted(s.id);
     expect(repo.isStarted(s.id)).toBe(true);
   });
 
+  it("persiste cwd null per sessioni senza working directory", () => {
+    const s = repo.createSession(null, null, 1000);
+    expect(repo.getSession(s.id)?.cwd).toBeNull();
+  });
+
   it("elimina una sessione e i suoi messaggi (cascade)", () => {
-    const s = repo.createSession(null, 1000);
+    const s = repo.createSession(null, null, 1000);
     repo.addMessage({ sessionId: s.id, role: "user", parts: [{ type: "text", text: "x" }] }, 1001);
     expect(repo.deleteSession(s.id)).toBe(true);
     expect(repo.getSession(s.id)).toBeUndefined();

@@ -16,6 +16,9 @@ export function openDatabase(dbPath: string): Database.Database {
   if (!cols.some((c) => c.name === "started")) {
     db.exec("ALTER TABLE sessions ADD COLUMN started INTEGER NOT NULL DEFAULT 0");
   }
+  if (!cols.some((c) => c.name === "cwd")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
+  }
   return db;
 }
 
@@ -25,6 +28,7 @@ function applySchema(db: Database.Database): void {
       id          TEXT PRIMARY KEY,
       title       TEXT,
       started     INTEGER NOT NULL DEFAULT 0,
+      cwd         TEXT,
       created_at  INTEGER NOT NULL,
       updated_at  INTEGER NOT NULL
     );

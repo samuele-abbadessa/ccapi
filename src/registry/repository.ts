@@ -6,6 +6,7 @@ interface SessionRow {
   id: string;
   title: string | null;
   started: number;
+  cwd: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -39,14 +40,14 @@ export class Repository {
 
   // ---- Sessions ----
 
-  createSession(title: string | null, now: number): Session {
+  createSession(title: string | null, cwd: string | null, now: number): Session {
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO sessions (id, title, started, created_at, updated_at) VALUES (?, ?, 0, ?, ?)",
+        "INSERT INTO sessions (id, title, started, cwd, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?)",
       )
-      .run(id, title, now, now);
-    return { id, title, started: false, createdAt: now, updatedAt: now };
+      .run(id, title, cwd, now, now);
+    return { id, title, started: false, cwd, createdAt: now, updatedAt: now };
   }
 
   /** true se la sessione è già stata avviata su Claude (transcript creato). */
@@ -139,6 +140,7 @@ function mapSession(row: SessionRow): Session {
     id: row.id,
     title: row.title,
     started: row.started === 1,
+    cwd: row.cwd,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
