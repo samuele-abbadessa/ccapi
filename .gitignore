@@ -3,3 +3,7 @@ dist/
 .ccapi/
 *.log
 .DS_Store
+docs/plans
+docs/specs
+docs/BACKLOG.md
+.claude
