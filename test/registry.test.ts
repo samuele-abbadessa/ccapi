@@ -50,6 +50,16 @@ describe("Repository", () => {
     expect(repo.getSession(s.id)?.cwd).toBeNull();
   });
 
+  it("listSessions ordina per updated_at DESC (più recenti attive prima)", () => {
+    const a = repo.createSession("A", null, 1000);
+    const b = repo.createSession("B", null, 2000);
+    // A creata prima, ma viene "toccata" dopo B → deve risultare prima
+    repo.touchSession(a.id, 3000);
+    const list = repo.listSessions();
+    expect(list[0]?.id).toBe(a.id);
+    expect(list[1]?.id).toBe(b.id);
+  });
+
   it("elimina una sessione e i suoi messaggi (cascade)", () => {
     const s = repo.createSession(null, null, 1000);
     repo.addMessage({ sessionId: s.id, role: "user", parts: [{ type: "text", text: "x" }] }, 1001);

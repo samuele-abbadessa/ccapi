@@ -71,8 +71,9 @@ export class Repository {
   }
 
   listSessions(): Session[] {
+    // Ordina per updated_at DESC: sessioni più recentemente attive (touchSession) compaiono prima.
     const rows = this.db
-      .prepare("SELECT * FROM sessions ORDER BY created_at DESC")
+      .prepare("SELECT * FROM sessions ORDER BY updated_at DESC")
       .all() as SessionRow[];
     return rows.map(mapSession);
   }
