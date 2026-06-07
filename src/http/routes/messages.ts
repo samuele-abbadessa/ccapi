@@ -9,10 +9,11 @@ interface Deps {
   repo: Repository;
   orchestrator: Orchestrator;
   now: () => number;
+  defaultCwd: string;
 }
 
 export function registerMessageRoutes(app: FastifyInstance, deps: Deps): void {
-  const { repo, orchestrator, now } = deps;
+  const { repo, orchestrator, now, defaultCwd } = deps;
 
   app.get<{ Params: { id: string } }>("/sessions/:id/messages", async (req, reply) => {
     if (!repo.getSession(req.params.id)) {
@@ -72,7 +73,8 @@ export function registerMessageRoutes(app: FastifyInstance, deps: Deps): void {
     };
 
     try {
-      const result = await orchestrator.submit(session.id, options);
+      const cwd = session.cwd ?? defaultCwd;
+      const result = await orchestrator.submit(session.id, options, cwd);
       const assistant = repo.addMessage(
         {
           sessionId: session.id,

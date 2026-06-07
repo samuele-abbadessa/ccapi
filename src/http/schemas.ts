@@ -3,6 +3,7 @@ import type { Message } from "../types.js";
 
 export const createSessionSchema = z.object({
   title: z.string().min(1).max(200).optional(),
+  cwd: z.string().min(1).optional(),
 });
 
 export const updateSessionSchema = z.object({

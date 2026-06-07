@@ -7,6 +7,8 @@ import { registerSessionRoutes } from "./routes/sessions.js";
 export interface ServerDeps {
   repo: Repository;
   orchestrator: Orchestrator;
+  detachedCwdBase: string | null;
+  defaultCwd: string;
   now?: () => number;
 }
 
@@ -16,8 +18,19 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   app.get("/health", async () => ({ status: "ok" }));
 
-  registerSessionRoutes(app, { repo: deps.repo, orchestrator: deps.orchestrator, now });
-  registerMessageRoutes(app, { repo: deps.repo, orchestrator: deps.orchestrator, now });
+  registerSessionRoutes(app, {
+    repo: deps.repo,
+    orchestrator: deps.orchestrator,
+    now,
+    detachedCwdBase: deps.detachedCwdBase,
+    defaultCwd: deps.defaultCwd,
+  });
+  registerMessageRoutes(app, {
+    repo: deps.repo,
+    orchestrator: deps.orchestrator,
+    now,
+    defaultCwd: deps.defaultCwd,
+  });
 
   return app;
 }

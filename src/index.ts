@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { resolveConfig } from "./config.js";
+import { assertBaseDir } from "./http/cwd.js";
 import { buildServer } from "./http/server.js";
 import { Orchestrator } from "./orchestrator/orchestrator.js";
 import { openDatabase } from "./registry/db.js";
@@ -7,15 +8,22 @@ import { Repository } from "./registry/repository.js";
 
 async function main(): Promise<void> {
   const config = resolveConfig();
+  const detachedCwdBase =
+    config.detachedCwdBase === null ? null : assertBaseDir(config.detachedCwdBase);
+
   const db = openDatabase(config.dbPath);
   const repo = new Repository(db);
   const orchestrator = new Orchestrator({
     claudeBin: config.claudeBin,
-    cwd: process.cwd(),
     isStarted: (id) => repo.isStarted(id),
     markStarted: (id) => repo.markStarted(id),
   });
-  const app = buildServer({ repo, orchestrator });
+  const app = buildServer({
+    repo,
+    orchestrator,
+    detachedCwdBase,
+    defaultCwd: process.cwd(),
+  });
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
@@ -32,7 +40,10 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
   await app.listen({ port: config.port, host: config.host });
-  app.log.info(`ccapi in ascolto su http://${config.host}:${config.port} (cwd: ${process.cwd()})`);
+  app.log.info(
+    `ccapi in ascolto su http://${config.host}:${config.port} (cwd: ${process.cwd()}` +
+      `${detachedCwdBase ? `, detached-cwd base: ${detachedCwdBase}` : ""})`,
+  );
 }
 
 main().catch((err) => {
