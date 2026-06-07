@@ -8,6 +8,7 @@ const FAKE_CLAUDE = fileURLToPath(new URL("./fixtures/fake-claude.sh", import.me
 const SLOW_CLAUDE = fileURLToPath(new URL("./fixtures/slow-claude.sh", import.meta.url));
 const ECHO_ARGS = fileURLToPath(new URL("./fixtures/echo-args.sh", import.meta.url));
 const ECHO_CWD = fileURLToPath(new URL("./fixtures/echo-cwd.sh", import.meta.url));
+const SLEEP_CLAUDE = fileURLToPath(new URL("./fixtures/sleep-claude.sh", import.meta.url));
 
 describe("buildArgs", () => {
   it("include session-id e flag opzionali", () => {
@@ -160,5 +161,38 @@ describe("Orchestrator cwd", () => {
     });
     const r = await orch.submit("s1", { prompt: "x" }, "/tmp");
     expect((r.parts[0] as { text: string }).text).toBe("/tmp");
+  });
+});
+
+describe("Orchestrator serializzazione temporale", () => {
+  function makeOrch() {
+    const started = new Set<string>();
+    return new Orchestrator({
+      claudeBin: SLEEP_CLAUDE,
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
+  }
+
+  it("stessa sessione: due messaggi sono serializzati (durata ≈ somma)", async () => {
+    const orch = makeOrch();
+    const t0 = Date.now();
+    await Promise.all([
+      orch.submit("s1", { prompt: "a" }, process.cwd()),
+      orch.submit("s1", { prompt: "b" }, process.cwd()),
+    ]);
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeGreaterThan(700); // ~0.4s * 2 serializzati, con margine
+  });
+
+  it("sessioni diverse: due messaggi girano in parallelo (durata ≈ singolo)", async () => {
+    const orch = makeOrch();
+    const t0 = Date.now();
+    await Promise.all([
+      orch.submit("sa", { prompt: "a" }, process.cwd()),
+      orch.submit("sb", { prompt: "b" }, process.cwd()),
+    ]);
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeLessThan(700); // ~0.4s in parallelo, non sommato
   });
 });
