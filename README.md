@@ -42,6 +42,9 @@ npm test          # esegue la test suite
 | Host bind | `--host` | `CCAPI_HOST` | `127.0.0.1` |
 | Binario claude | `--claude-bin` | `CCAPI_CLAUDE_BIN` | `claude` (da PATH) |
 | Path DB SQLite | `--db` | `CCAPI_DB` | `.ccapi/ccapi.db` |
+| Radice cwd sessioni | `--detached-cwd [base]` | `CCAPI_DETACHED_CWD` | `(disabilitato)` |
+
+Con `--detached-cwd <base>` le sessioni possono specificare alla creazione una working directory (campo `cwd` in `POST /sessions`) entro `base`; senza il flag tutte le sessioni usano la cwd del server.
 
 Per lavorare su più progetti contemporaneamente è sufficiente avviare più istanze su porte diverse.
 

@@ -72,6 +72,9 @@ Ogni opzione si imposta con un flag CLI o una variabile d'ambiente. Precedenza: 
 | Indirizzo di bind | `--host` | `CCAPI_HOST` | `127.0.0.1` |
 | Binario claude | `--claude-bin` | `CCAPI_CLAUDE_BIN` | `claude` (dal PATH) |
 | Path del DB SQLite | `--db` | `CCAPI_DB` | `.ccapi/ccapi.db` |
+| Radice cwd sessioni | `--detached-cwd [base]` | `CCAPI_DETACHED_CWD` | `(disabilitato)` |
+
+La radice cwd (`--detached-cwd`) è un valore **opzionale**: con un path abilita la feature usando quel path come radice consentita; senza valore usa la cwd del server come radice. La radice `/` è **rifiutata** (svuoterebbe la sandbox). Se la radice non esiste o non è una directory il server **non si avvia** (fail-fast).
 
 Esempi:
 
@@ -115,19 +118,26 @@ Base URL negli esempi: `http://localhost:4096`. Tutte le richieste con body usan
 
 Body (opzionale):
 ```json
-{ "title": "La mia sessione" }
+{ "title": "La mia sessione", "cwd": "/percorso/opzionale" }
 ```
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `title` | string | no | Titolo della sessione. |
+| `cwd` | string | no | Working directory della sessione (relativa a `base` o assoluta). Richiede `--detached-cwd` attivo; ignorata se omessa (vedi §6). |
+
 Risposta `201`:
 ```json
 {
   "id": "0ec54bc9-4967-45bf-931b-a4177fee13bc",
   "title": "La mia sessione",
   "status": "idle",
+  "cwd": "/home/user/progetti/mio-progetto",
   "createdAt": 1780752193000,
   "updatedAt": 1780752193000
 }
 ```
-Non avvia alcun processo: crea solo il record e l'UUID.
+Il campo `cwd` contiene il path assoluto risolto della sessione (o `null` per sessioni create prima della feature detached-cwd). Non avvia alcun processo: crea solo il record e l'UUID.
 
 #### `GET /sessions` — lista le sessioni
 
@@ -285,6 +295,49 @@ curl -s http://localhost:4096/sessions/$SID/messages \
   | jq '[.[] | {role: .info.role, status: .info.status, text: (.parts[0].text // .parts[0].data)}]'
 ```
 
+### Working directory per-sessione
+
+Con il flag `--detached-cwd <base>` è possibile assegnare a ogni sessione una working directory diversa, entro la radice consentita (`base`). Utile per un'unica istanza ccapi che gestisce più progetti.
+
+**Abilitazione:**
+
+```bash
+# Avvia il server con radice consentita /home/user/progetti
+node dist/index.js --detached-cwd /home/user/progetti
+
+# oppure via variabile d'ambiente
+CCAPI_DETACHED_CWD=/home/user/progetti npm start
+
+# Senza path esplicito: usa la cwd del server come radice
+node dist/index.js --detached-cwd
+```
+
+**Creazione sessione con cwd:**
+
+```bash
+# cwd relativa a base (/home/user/progetti/mio-progetto)
+curl -s -X POST http://localhost:4096/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"title": "Progetto A", "cwd": "mio-progetto"}' | jq .
+
+# cwd assoluta (deve essere dentro base)
+curl -s -X POST http://localhost:4096/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"title": "Progetto B", "cwd": "/home/user/progetti/altro-progetto"}' | jq .
+```
+
+La risposta include il campo `cwd` con il path assoluto risolto. Tutti i messaggi di quella sessione gireranno in quella cartella.
+
+**Errori di validazione:**
+
+| Codice | Causa |
+|---|---|
+| `detached_cwd_disabled` | `cwd` nel body ma `--detached-cwd` non attivo. |
+| `invalid_cwd` | Il path non esiste o non è una directory. |
+| `cwd_outside_base` | Il path (anche via `..` o symlink) è fuori dalla radice consentita. |
+
+**Nota di sicurezza.** La sandbox è un guard-rail contro errori e un confine ragionevole nel modello locale/fidato: non è un jail forte. La validazione avviene alla creazione; symlink creati successivamente non sono ricontrollati. Il server non si avvia se la radice indicata non esiste, non è una directory, o è `/` (quest'ultimo caso svuoterebbe la sandbox).
+
 ---
 
 ## 7. Gestione degli errori
@@ -298,6 +351,9 @@ In caso di errore la risposta ha la forma:
 |---|---|---|
 | `400` | `invalid_body` | Body non valido (es. `jsonSchema` senza `outputFormat: "json"`). |
 | `400` | `prompt_too_large` | Prompt oltre il limite di 10 MB. |
+| `400` | `detached_cwd_disabled` | Campo `cwd` nel body di `POST /sessions` ma `--detached-cwd` non è attivo. |
+| `400` | `invalid_cwd` | La `cwd` richiesta non esiste o non è una directory. |
+| `400` | `cwd_outside_base` | La `cwd` richiesta (anche via `..` o symlink) è fuori dalla radice consentita. |
 | `404` | `not_found` | Sessione o messaggio inesistente. |
 | `409` | `aborted` | Il messaggio è stato interrotto da un `abort`. |
 | `502` | `process_error` | Il processo `claude` è terminato con errore (exit ≠ 0); `message` include lo stderr. |
