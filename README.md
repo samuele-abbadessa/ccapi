@@ -1,52 +1,52 @@
 # ccapi
 
-Server HTTP Node/TypeScript che espone sessioni [Claude Code CLI](https://claude.ai/code) via API REST.
+HTTP server (Node/TypeScript) that exposes [Claude Code CLI](https://claude.ai/code) sessions via a REST API.
 
-Ispirato a [OpenCode Server](https://opencode.ai). Consente di controllare conversazioni Claude da script, agenti o strumenti di terze parti.
-
----
-
-## Modello chiave
-
-Per ogni messaggio il server spawna un processo **effimero** `claude -p` (prompt via STDIN). La **continuità della conversazione** non è data da un processo persistente, ma dal transcript che Claude Code salva su disco: ogni sessione ha un UUID generato alla creazione. La **prima** invocazione usa `--session-id <uuid>` per creare il transcript; le invocazioni **successive** usano `--resume <uuid>` per riprendere il contesto (riusare `--session-id` su una sessione già esistente fallisce).
-
-Il registro SQLite è una **vista per l'API** (prompt utente + risposta finale). Non re-inietta contesto nel prompt e non sostituisce il transcript di Claude.
+Inspired by [OpenCode Server](https://opencode.ai). Lets you control Claude conversations from scripts, agents, or third-party tools.
 
 ---
 
-## Prerequisiti
+## Key model
+
+For each message the server spawns an **ephemeral** `claude -p` process (prompt passed via STDIN). **Conversation continuity** is not maintained by a persistent process but by the transcript that Claude Code saves to disk: each session has a UUID generated at creation. The **first** invocation uses `--session-id <uuid>` to create the transcript; **subsequent** invocations use `--resume <uuid>` to resume the context (reusing `--session-id` on an existing session fails).
+
+The SQLite registry is an **API view** (user prompt + final response). It does not re-inject context into the prompt and does not replace the Claude transcript.
+
+---
+
+## Prerequisites
 
 - Node ≥ 20
-- `claude` CLI nel PATH (o impostare `CCAPI_CLAUDE_BIN`)
-- I permessi dei tool Claude si configurano con `.claude/settings.local.json` nella cartella del progetto su cui si avvia il server — il server non gestisce i permessi
+- `claude` CLI in PATH (or set `CCAPI_CLAUDE_BIN`)
+- Claude tool permissions are configured via `.claude/settings.local.json` in the project folder where the server is started — the server does not manage permissions
 
 ---
 
-## Installazione e avvio
+## Installation and startup
 
 ```bash
 npm install
-npm start         # avvia il server (default: 127.0.0.1:4096)
-npm run dev       # avvia con watch (nodemon)
-npm run build     # compila TypeScript → dist/
-npm test          # esegue la test suite
+npm start         # start the server (default: 127.0.0.1:4096)
+npm run dev       # start with watch (nodemon)
+npm run build     # compile TypeScript → dist/
+npm test          # run the test suite
 ```
 
 ---
 
-## Configurazione
+## Configuration
 
-| Opzione | CLI flag | Env var | Default |
+| Option | CLI flag | Env var | Default |
 |---|---|---|---|
-| Porta | `--port` | `CCAPI_PORT` | `4096` |
-| Host bind | `--host` | `CCAPI_HOST` | `127.0.0.1` |
-| Binario claude | `--claude-bin` | `CCAPI_CLAUDE_BIN` | `claude` (da PATH) |
-| Path DB SQLite | `--db` | `CCAPI_DB` | `.ccapi/ccapi.db` |
-| Radice cwd sessioni | `--detached-cwd [base]` | `CCAPI_DETACHED_CWD` | `(disabilitato)` |
+| Port | `--port` | `CCAPI_PORT` | `4096` |
+| Bind host | `--host` | `CCAPI_HOST` | `127.0.0.1` |
+| Claude binary | `--claude-bin` | `CCAPI_CLAUDE_BIN` | `claude` (from PATH) |
+| SQLite DB path | `--db` | `CCAPI_DB` | `.ccapi/ccapi.db` |
+| Session cwd root | `--detached-cwd [base]` | `CCAPI_DETACHED_CWD` | `(disabled)` |
 
-Con `--detached-cwd <base>` le sessioni possono specificare alla creazione una working directory (campo `cwd` in `POST /sessions`) entro `base`; senza il flag tutte le sessioni usano la cwd del server.
+With `--detached-cwd <base>` sessions can specify a working directory at creation time (the `cwd` field in `POST /sessions`) within `base`; without the flag all sessions use the server's cwd.
 
-Per lavorare su più progetti contemporaneamente è sufficiente avviare più istanze su porte diverse.
+To work on multiple projects simultaneously, start multiple instances on different ports.
 
 ```bash
 CCAPI_PORT=4097 CCAPI_DB=.ccapi/proj2.db npm start
@@ -54,52 +54,52 @@ CCAPI_PORT=4097 CCAPI_DB=.ccapi/proj2.db npm start
 
 ---
 
-## Endpoint
+## Endpoints
 
-| Metodo | Path | Descrizione |
+| Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check → `{ "status": "ok" }` |
-| `POST` | `/sessions` | Crea sessione (body opzionale `{ title? }`) → 201 |
-| `GET` | `/sessions` | Lista sessioni (con campo `status`: `idle`\|`busy`) |
-| `GET` | `/sessions/:id` | Dettaglio sessione |
-| `PATCH` | `/sessions/:id` | Aggiorna titolo (body `{ title }`) |
-| `DELETE` | `/sessions/:id` | Rimuove la sessione dal registro → 204 |
-| `POST` | `/sessions/:id/abort` | Interrompe il processo in corso e svuota la coda |
-| `POST` | `/sessions/:id/messages` | Invia messaggio, risposta sincrona `{ info, parts }` |
-| `GET` | `/sessions/:id/messages` | Lista messaggi della sessione |
-| `GET` | `/sessions/:id/messages/:msgId` | Singolo messaggio |
+| `POST` | `/sessions` | Create session (optional body `{ title? }`) → 201 |
+| `GET` | `/sessions` | List sessions (with runtime `status`: `idle`\|`busy`) |
+| `GET` | `/sessions/:id` | Session detail |
+| `PATCH` | `/sessions/:id` | Update title (body `{ title }`) |
+| `DELETE` | `/sessions/:id` | Remove session from registry → 204 |
+| `POST` | `/sessions/:id/abort` | Abort running process and clear queue |
+| `POST` | `/sessions/:id/messages` | Send message, synchronous response `{ info, parts }` |
+| `GET` | `/sessions/:id/messages` | List session messages |
+| `GET` | `/sessions/:id/messages/:msgId` | Single message |
 
-La risposta di `/messages` (POST) contiene `parts`, array di union discriminata:
+The `/messages` (POST) response contains `parts`, a discriminated union array:
 - `{ type: "text", text: string }`
 - `{ type: "structured", data: unknown }`
 
-**Codici di errore:** 400 (body invalido / prompt > 10 MB), 404 (sessione/messaggio inesistente), 409 (sessione in stato aborted), 502 (errore processo claude), 500 (interno).
+**Error codes:** 400 (invalid body / prompt > 10 MB), 404 (session/message not found), 409 (session in aborted state), 502 (claude process error), 500 (internal).
 
 ---
 
-## Esempi
+## Examples
 
-### Creare una sessione e inviare un messaggio testuale
+### Create a session and send a text message
 
 ```bash
-# Crea sessione
+# Create session
 SESSION=$(curl -s -X POST http://localhost:4096/sessions \
   -H 'Content-Type: application/json' \
-  -d '{"title": "Sessione di test"}' | jq -r '.id')
+  -d '{"title": "Test session"}' | jq -r '.id')
 
-# Invia messaggio
+# Send message
 curl -s -X POST http://localhost:4096/sessions/$SESSION/messages \
   -H 'Content-Type: application/json' \
-  -d '{"prompt": "Ciao! Spiega in una riga cos'\''è una closure JavaScript."}' | jq .
+  -d '{"prompt": "Hello! Explain in one line what a JavaScript closure is."}' | jq .
 ```
 
-### Richiesta con output JSON strutturato
+### Request with structured JSON output
 
 ```bash
 curl -s -X POST http://localhost:4096/sessions/$SESSION/messages \
   -H 'Content-Type: application/json' \
   -d '{
-    "prompt": "Elenca 3 linguaggi di programmazione con anno di creazione.",
+    "prompt": "List 3 programming languages with their year of creation.",
     "outputFormat": "json",
     "jsonSchema": {
       "type": "array",
@@ -116,8 +116,14 @@ curl -s -X POST http://localhost:4096/sessions/$SESSION/messages \
 
 ---
 
-## Documentazione
+## Documentation
 
-- **Guida d'uso** (riferimento API completo, esempi, troubleshooting): [`docs/USAGE.md`](docs/USAGE.md)
-- Specifiche dettagliate: [`docs/specs/2026-06-06-ccapi-core.md`](docs/specs/2026-06-06-ccapi-core.md)
-- Feature future e backlog: [`docs/BACKLOG.md`](docs/BACKLOG.md)
+- **User guide** (full API reference, examples, troubleshooting):
+  - [docs/USAGE.md](docs/USAGE.md) — English
+  - [docs/USAGE-it.md](docs/USAGE-it.md) — Italian
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
