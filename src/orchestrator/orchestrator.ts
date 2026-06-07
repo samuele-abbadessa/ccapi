@@ -4,13 +4,13 @@ import { AbortedError } from "./errors.js";
 
 interface QueueItem {
   opts: MessageOptions;
+  cwd: string;
   resolve: (r: RunResult) => void;
   reject: (e: Error) => void;
 }
 
 export interface OrchestratorOptions {
   claudeBin: string;
-  cwd: string;
   isStarted: (sessionId: string) => boolean;
   markStarted: (sessionId: string) => void;
 }
@@ -28,10 +28,10 @@ export class Orchestrator {
   constructor(private readonly opts: OrchestratorOptions) {}
 
   /** Accoda un messaggio per la sessione; risolve quando elaborato. */
-  submit(sessionId: string, message: MessageOptions): Promise<RunResult> {
+  submit(sessionId: string, message: MessageOptions, cwd: string): Promise<RunResult> {
     return new Promise<RunResult>((resolve, reject) => {
       const queue = this.queues.get(sessionId) ?? [];
-      queue.push({ opts: message, resolve, reject });
+      queue.push({ opts: message, cwd, resolve, reject });
       this.queues.set(sessionId, queue);
       this.tryNext(sessionId);
     });
@@ -74,7 +74,7 @@ export class Orchestrator {
     if (!item) return;
 
     const resume = this.opts.isStarted(sessionId);
-    const handle = runClaude(this.opts.claudeBin, this.opts.cwd, sessionId, item.opts, resume);
+    const handle = runClaude(this.opts.claudeBin, item.cwd, sessionId, item.opts, resume);
     this.active.set(sessionId, handle);
 
     handle.promise.then(

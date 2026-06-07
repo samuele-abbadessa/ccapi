@@ -7,6 +7,7 @@ import { Orchestrator } from "../src/orchestrator/orchestrator.js";
 const FAKE_CLAUDE = fileURLToPath(new URL("./fixtures/fake-claude.sh", import.meta.url));
 const SLOW_CLAUDE = fileURLToPath(new URL("./fixtures/slow-claude.sh", import.meta.url));
 const ECHO_ARGS = fileURLToPath(new URL("./fixtures/echo-args.sh", import.meta.url));
+const ECHO_CWD = fileURLToPath(new URL("./fixtures/echo-cwd.sh", import.meta.url));
 
 describe("buildArgs", () => {
   it("include session-id e flag opzionali", () => {
@@ -81,13 +82,12 @@ describe("Orchestrator serializzazione", () => {
     const started = new Set<string>();
     const orch = new Orchestrator({
       claudeBin: FAKE_CLAUDE,
-      cwd: process.cwd(),
       isStarted: (id) => started.has(id),
       markStarted: (id) => started.add(id),
     });
     const [a, b] = await Promise.all([
-      orch.submit("s1", { prompt: "primo" }),
-      orch.submit("s1", { prompt: "secondo" }),
+      orch.submit("s1", { prompt: "primo" }, process.cwd()),
+      orch.submit("s1", { prompt: "secondo" }, process.cwd()),
     ]);
     expect(a.parts).toEqual([{ type: "text", text: "primo" }]);
     expect(b.parts).toEqual([{ type: "text", text: "secondo" }]);
@@ -101,11 +101,10 @@ describe("Orchestrator abort", () => {
     const started = new Set<string>();
     const orch = new Orchestrator({
       claudeBin: SLOW_CLAUDE,
-      cwd: process.cwd(),
       isStarted: (id) => started.has(id),
       markStarted: (id) => started.add(id),
     });
-    const pending = orch.submit("s1", { prompt: "x" });
+    const pending = orch.submit("s1", { prompt: "x" }, process.cwd());
     // Attacca subito l'handler di rejection (evita unhandled rejection).
     const assertion = expect(pending).rejects.toBeInstanceOf(AbortedError);
     // Lascia partire il processo, poi interrompi.
@@ -120,12 +119,11 @@ describe("Orchestrator abort", () => {
     const started = new Set<string>();
     const orch = new Orchestrator({
       claudeBin: SLOW_CLAUDE,
-      cwd: process.cwd(),
       isStarted: (id) => started.has(id),
       markStarted: (id) => started.add(id),
     });
-    const first = orch.submit("s1", { prompt: "primo" });
-    const queued = orch.submit("s1", { prompt: "secondo" });
+    const first = orch.submit("s1", { prompt: "primo" }, process.cwd());
+    const queued = orch.submit("s1", { prompt: "secondo" }, process.cwd());
     // Attacca subito gli handler: abort rigetta la coda in modo sincrono.
     const assertions = Promise.all([
       expect(first).rejects.toBeInstanceOf(AbortedError),
@@ -142,13 +140,25 @@ describe("Orchestrator resume", () => {
     const started = new Set<string>();
     const orch = new Orchestrator({
       claudeBin: ECHO_ARGS,
-      cwd: process.cwd(),
       isStarted: (id) => started.has(id),
       markStarted: (id) => started.add(id),
     });
-    const r1 = await orch.submit("s1", { prompt: "x" });
+    const r1 = await orch.submit("s1", { prompt: "x" }, process.cwd());
     expect((r1.parts[0] as { text: string }).text).toContain("--session-id");
-    const r2 = await orch.submit("s1", { prompt: "x" });
+    const r2 = await orch.submit("s1", { prompt: "x" }, process.cwd());
     expect((r2.parts[0] as { text: string }).text).toContain("--resume");
+  });
+});
+
+describe("Orchestrator cwd", () => {
+  it("spawna il processo nella cwd passata al submit", async () => {
+    const started = new Set<string>();
+    const orch = new Orchestrator({
+      claudeBin: ECHO_CWD,
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
+    const r = await orch.submit("s1", { prompt: "x" }, "/tmp");
+    expect((r.parts[0] as { text: string }).text).toBe("/tmp");
   });
 });
