@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 export interface Config {
@@ -5,6 +6,8 @@ export interface Config {
   host: string;
   claudeBin: string;
   dbPath: string;
+  /** Radice consentita per le cwd di sessione (path assoluto), oppure null se la feature è disabilitata. */
+  detachedCwdBase: string | null;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -12,7 +15,58 @@ export const DEFAULT_CONFIG: Config = {
   host: "127.0.0.1",
   claudeBin: "claude",
   dbPath: ".ccapi/ccapi.db",
+  detachedCwdBase: null,
 };
+
+/**
+ * Estrae `--detached-cwd` (a valore opzionale) da argv, perché parseArgs non
+ * supporta valori opzionali. Ritorna gli altri argomenti, se il flag è presente
+ * e il suo eventuale valore.
+ */
+function extractDetachedCwd(argv: string[]): {
+  rest: string[];
+  present: boolean;
+  value: string | undefined;
+} {
+  const rest: string[] = [];
+  let present = false;
+  let value: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === undefined) continue;
+    if (a === "--detached-cwd") {
+      present = true;
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        value = next;
+        i++; // consuma il valore
+      }
+    } else if (a.startsWith("--detached-cwd=")) {
+      present = true;
+      const v = a.slice("--detached-cwd=".length);
+      value = v === "" ? undefined : v;
+    } else {
+      rest.push(a);
+    }
+  }
+  return { rest, present, value };
+}
+
+/** Risolve la radice consentita (path assoluto) o null se disabilitata. CLI > env. */
+function resolveDetachedCwdBase(
+  cliPresent: boolean,
+  cliValue: string | undefined,
+  env: NodeJS.ProcessEnv,
+): string | null {
+  if (cliPresent) {
+    return cliValue !== undefined ? resolve(cliValue) : resolve();
+  }
+  const envVal = env.CCAPI_DETACHED_CWD;
+  if (envVal !== undefined) {
+    return envVal !== "" ? resolve(envVal) : resolve();
+  }
+  return null;
+}
 
 /**
  * Risolve la configurazione con precedenza: CLI flag > env > default.
@@ -23,8 +77,9 @@ export function resolveConfig(
   argv: string[] = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env,
 ): Config {
+  const { rest, present, value } = extractDetachedCwd(argv);
   const { values } = parseArgs({
-    args: argv,
+    args: rest,
     options: {
       port: { type: "string" },
       host: { type: "string" },
@@ -39,8 +94,9 @@ export function resolveConfig(
   const host = values.host ?? env.CCAPI_HOST ?? DEFAULT_CONFIG.host;
   const claudeBin = values["claude-bin"] ?? env.CCAPI_CLAUDE_BIN ?? DEFAULT_CONFIG.claudeBin;
   const dbPath = values.db ?? env.CCAPI_DB ?? DEFAULT_CONFIG.dbPath;
+  const detachedCwdBase = resolveDetachedCwdBase(present, value, env);
 
-  return { port, host, claudeBin, dbPath };
+  return { port, host, claudeBin, dbPath, detachedCwdBase };
 }
 
 function pickNumber(
