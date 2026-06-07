@@ -233,7 +233,7 @@ describe("HTTP API — edge cases", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("prompt oltre 10 MB → 413 (body too large, Fastify intercetta prima del route handler)", async () => {
+  it("prompt oltre 10 MB → 400 prompt_too_large", async () => {
     const s = (await app.inject({ method: "POST", url: "/sessions", payload: {} })).json();
     const bigPrompt = "a".repeat(10 * 1024 * 1024 + 1);
     const res = await app.inject({
@@ -241,9 +241,10 @@ describe("HTTP API — edge cases", () => {
       url: `/sessions/${s.id}/messages`,
       payload: { prompt: bigPrompt },
     });
-    // Fastify rigetta a livello di body parser (413) prima che il route handler
-    // possa verificare MAX_PROMPT_BYTES e restituire 400 prompt_too_large.
-    expect(res.statusCode).toBe(413);
+    // Il bodyLimit (10 MB + 1 MB margine) lascia passare il body al route handler,
+    // che valida il prompt con MAX_PROMPT_BYTES e risponde 400 prompt_too_large.
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("prompt_too_large");
   });
 
   it("abort durante un messaggio → 409 aborted + assistant 'aborted' persistito", async () => {
