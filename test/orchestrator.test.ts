@@ -8,6 +8,7 @@ const FAKE_CLAUDE = fileURLToPath(new URL("./fixtures/fake-claude.sh", import.me
 const SLOW_CLAUDE = fileURLToPath(new URL("./fixtures/slow-claude.sh", import.meta.url));
 const ECHO_ARGS = fileURLToPath(new URL("./fixtures/echo-args.sh", import.meta.url));
 const ECHO_CWD = fileURLToPath(new URL("./fixtures/echo-cwd.sh", import.meta.url));
+const ECHO_ENV = fileURLToPath(new URL("./fixtures/echo-env.sh", import.meta.url));
 const SLEEP_CLAUDE = fileURLToPath(new URL("./fixtures/sleep-claude.sh", import.meta.url));
 
 describe("buildArgs", () => {
@@ -87,8 +88,8 @@ describe("Orchestrator serializzazione", () => {
       markStarted: (id) => started.add(id),
     });
     const [a, b] = await Promise.all([
-      orch.submit("s1", { prompt: "primo" }, process.cwd()),
-      orch.submit("s1", { prompt: "secondo" }, process.cwd()),
+      orch.submit("s1", { prompt: "primo" }, process.cwd(), null),
+      orch.submit("s1", { prompt: "secondo" }, process.cwd(), null),
     ]);
     expect(a.parts).toEqual([{ type: "text", text: "primo" }]);
     expect(b.parts).toEqual([{ type: "text", text: "secondo" }]);
@@ -105,7 +106,7 @@ describe("Orchestrator abort", () => {
       isStarted: (id) => started.has(id),
       markStarted: (id) => started.add(id),
     });
-    const pending = orch.submit("s1", { prompt: "x" }, process.cwd());
+    const pending = orch.submit("s1", { prompt: "x" }, process.cwd(), null);
     // Attacca subito l'handler di rejection (evita unhandled rejection).
     const assertion = expect(pending).rejects.toBeInstanceOf(AbortedError);
     // Lascia partire il processo, poi interrompi.
@@ -123,8 +124,8 @@ describe("Orchestrator abort", () => {
       isStarted: (id) => started.has(id),
       markStarted: (id) => started.add(id),
     });
-    const first = orch.submit("s1", { prompt: "primo" }, process.cwd());
-    const queued = orch.submit("s1", { prompt: "secondo" }, process.cwd());
+    const first = orch.submit("s1", { prompt: "primo" }, process.cwd(), null);
+    const queued = orch.submit("s1", { prompt: "secondo" }, process.cwd(), null);
     // Attacca subito gli handler: abort rigetta la coda in modo sincrono.
     const assertions = Promise.all([
       expect(first).rejects.toBeInstanceOf(AbortedError),
@@ -144,9 +145,9 @@ describe("Orchestrator resume", () => {
       isStarted: (id) => started.has(id),
       markStarted: (id) => started.add(id),
     });
-    const r1 = await orch.submit("s1", { prompt: "x" }, process.cwd());
+    const r1 = await orch.submit("s1", { prompt: "x" }, process.cwd(), null);
     expect((r1.parts[0] as { text: string }).text).toContain("--session-id");
-    const r2 = await orch.submit("s1", { prompt: "x" }, process.cwd());
+    const r2 = await orch.submit("s1", { prompt: "x" }, process.cwd(), null);
     expect((r2.parts[0] as { text: string }).text).toContain("--resume");
   });
 });
@@ -159,8 +160,48 @@ describe("Orchestrator cwd", () => {
       isStarted: (id) => started.has(id),
       markStarted: (id) => started.add(id),
     });
-    const r = await orch.submit("s1", { prompt: "x" }, "/tmp");
+    const r = await orch.submit("s1", { prompt: "x" }, "/tmp", null);
     expect((r.parts[0] as { text: string }).text).toBe("/tmp");
+  });
+});
+
+describe("Orchestrator envVars", () => {
+  it("passa gli envVars al processo spawnato", async () => {
+    const started = new Set<string>();
+    const orch = new Orchestrator({
+      claudeBin: ECHO_ENV,
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
+    const r = await orch.submit("s1", { prompt: "x" }, process.cwd(), { MY_VAR: "hello" });
+    expect((r.parts[0] as { text: string }).text).toBe("hello");
+  });
+
+  it("senza env il merge con process.env resta visibile", async () => {
+    process.env.MY_VAR = "from-process";
+    const started = new Set<string>();
+    const orch = new Orchestrator({
+      claudeBin: ECHO_ENV,
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
+    // env null → eredita process.env: MY_VAR resta visibile.
+    const r = await orch.submit("s1", { prompt: "x" }, process.cwd(), null);
+    expect((r.parts[0] as { text: string }).text).toBe("from-process");
+    delete process.env.MY_VAR;
+  });
+
+  it("merge: gli envVars sovrascrivono process.env", async () => {
+    process.env.MY_VAR = "from-process";
+    const started = new Set<string>();
+    const orch = new Orchestrator({
+      claudeBin: ECHO_ENV,
+      isStarted: (id) => started.has(id),
+      markStarted: (id) => started.add(id),
+    });
+    const r = await orch.submit("s1", { prompt: "x" }, process.cwd(), { MY_VAR: "override" });
+    expect((r.parts[0] as { text: string }).text).toBe("override");
+    delete process.env.MY_VAR;
   });
 });
 
@@ -178,8 +219,8 @@ describe("Orchestrator serializzazione temporale", () => {
     const orch = makeOrch();
     const t0 = Date.now();
     await Promise.all([
-      orch.submit("s1", { prompt: "a" }, process.cwd()),
-      orch.submit("s1", { prompt: "b" }, process.cwd()),
+      orch.submit("s1", { prompt: "a" }, process.cwd(), null),
+      orch.submit("s1", { prompt: "b" }, process.cwd(), null),
     ]);
     const elapsed = Date.now() - t0;
     expect(elapsed).toBeGreaterThan(700); // ~0.4s * 2 serializzati, con margine
@@ -189,8 +230,8 @@ describe("Orchestrator serializzazione temporale", () => {
     const orch = makeOrch();
     const t0 = Date.now();
     await Promise.all([
-      orch.submit("sa", { prompt: "a" }, process.cwd()),
-      orch.submit("sb", { prompt: "b" }, process.cwd()),
+      orch.submit("sa", { prompt: "a" }, process.cwd(), null),
+      orch.submit("sb", { prompt: "b" }, process.cwd(), null),
     ]);
     const elapsed = Date.now() - t0;
     expect(elapsed).toBeLessThan(700); // ~0.4s in parallelo, non sommato

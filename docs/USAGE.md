@@ -120,13 +120,14 @@ Base URL in examples: `http://localhost:4096`. All requests with a body use `Con
 
 Body (optional):
 ```json
-{ "title": "My session", "cwd": "/optional/path" }
+{ "title": "My session", "cwd": "/optional/path", "envVars": { "MY_VAR": "value" } }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `title` | string | no | Session title. |
 | `cwd` | string | no | Session working directory (relative to `base` or absolute). Requires `--detached-cwd` to be active; ignored if omitted (see §6). |
+| `envVars` | object | no | Environment variables injected into every `claude` process spawned for this session. Merged on top of the server's environment (overriding existing keys). Values are coerced to strings (see below). No restriction: any key is allowed, including sensitive ones such as `PATH` — only expose ccapi to trusted clients. |
 
 Response `201`:
 ```json
@@ -135,11 +136,23 @@ Response `201`:
   "title": "My session",
   "status": "idle",
   "cwd": "/home/user/projects/my-project",
+  "envVars": { "MY_VAR": "value" },
   "createdAt": 1780752193000,
   "updatedAt": 1780752193000
 }
 ```
-The `cwd` field contains the resolved absolute path of the session (or `null` for sessions created before the detached-cwd feature). No process is started: it only creates the record and UUID.
+The `cwd` field contains the resolved absolute path of the session (or `null` for sessions created before the detached-cwd feature). The `envVars` field contains the coerced variables (or `null` if none were provided). No process is started: it only creates the record and UUID.
+
+**Value coercion.** Environment variables must be strings, so each `envVars` value is coerced:
+
+| Input type | Result |
+|---|---|
+| string | unchanged |
+| number / boolean | `String(value)` (e.g. `42` → `"42"`, `true` → `"true"`) |
+| array | `value.join()` (comma-separated, e.g. `[1,2,3]` → `"1,2,3"`) |
+| object | `Object.entries(value).map((e) => e.join(";")).join()` (e.g. `{a:1,b:2}` → `"a;1,b;2"`) |
+
+`envVars` persists on the session: it is re-applied to **every** message (each spawns a fresh ephemeral `claude` process), not just the first one.
 
 #### `GET /sessions` — list sessions
 

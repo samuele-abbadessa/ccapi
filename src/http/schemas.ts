@@ -4,7 +4,28 @@ import type { Message } from "../types.js";
 export const createSessionSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   cwd: z.string().min(1).optional(),
+  // Valori arbitrari: vengono coerciati a stringa dopo il parse (vedi coerceEnvVars).
+  envVars: z.record(z.string(), z.unknown()).optional(),
 });
+
+/** Coerce un singolo valore di env var a stringa (l'ambiente di un processo richiede stringhe). */
+export function coerceEnvValue(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) return v.join();
+  if (v !== null && typeof v === "object") {
+    return Object.entries(v)
+      .map((e) => e.join(";"))
+      .join();
+  }
+  return String(v);
+}
+
+/** Coerce tutti i valori di un record di env var a stringa, preservando le chiavi. */
+export function coerceEnvVars(raw: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw)) out[k] = coerceEnvValue(v);
+  return out;
+}
 
 export const updateSessionSchema = z.object({
   title: z.string().min(1).max(200).nullable(),

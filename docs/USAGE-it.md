@@ -120,13 +120,14 @@ Base URL negli esempi: `http://localhost:4096`. Tutte le richieste con body usan
 
 Body (opzionale):
 ```json
-{ "title": "La mia sessione", "cwd": "/percorso/opzionale" }
+{ "title": "La mia sessione", "cwd": "/percorso/opzionale", "envVars": { "MY_VAR": "valore" } }
 ```
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `title` | string | no | Titolo della sessione. |
 | `cwd` | string | no | Working directory della sessione (relativa a `base` o assoluta). Richiede `--detached-cwd` attivo; ignorata se omessa (vedi §6). |
+| `envVars` | object | no | Variabili d'ambiente iniettate in ogni processo `claude` avviato per questa sessione. Vengono unite sopra l'ambiente del server (sovrascrivendo le chiavi esistenti). I valori sono convertiti a stringa (vedi sotto). Nessuna restrizione: qualunque chiave è ammessa, incluse quelle sensibili come `PATH` — esponi ccapi solo a client fidati. |
 
 Risposta `201`:
 ```json
@@ -135,11 +136,23 @@ Risposta `201`:
   "title": "La mia sessione",
   "status": "idle",
   "cwd": "/home/user/progetti/mio-progetto",
+  "envVars": { "MY_VAR": "valore" },
   "createdAt": 1780752193000,
   "updatedAt": 1780752193000
 }
 ```
-Il campo `cwd` contiene il path assoluto risolto della sessione (o `null` per sessioni create prima della feature detached-cwd). Non avvia alcun processo: crea solo il record e l'UUID.
+Il campo `cwd` contiene il path assoluto risolto della sessione (o `null` per sessioni create prima della feature detached-cwd). Il campo `envVars` contiene le variabili convertite (o `null` se non ne sono state fornite). Non avvia alcun processo: crea solo il record e l'UUID.
+
+**Conversione dei valori.** Le variabili d'ambiente devono essere stringhe, quindi ogni valore di `envVars` viene convertito:
+
+| Tipo input | Risultato |
+|---|---|
+| string | invariato |
+| number / boolean | `String(value)` (es. `42` → `"42"`, `true` → `"true"`) |
+| array | `value.join()` (separati da virgola, es. `[1,2,3]` → `"1,2,3"`) |
+| object | `Object.entries(value).map((e) => e.join(";")).join()` (es. `{a:1,b:2}` → `"a;1,b;2"`) |
+
+`envVars` è persistito sulla sessione: viene riapplicato a **ogni** messaggio (ognuno avvia un nuovo processo `claude` effimero), non solo al primo.
 
 #### `GET /sessions` — lista le sessioni
 

@@ -74,7 +74,7 @@ export function registerMessageRoutes(app: FastifyInstance, deps: Deps): void {
 
     try {
       const cwd = session.cwd ?? defaultCwd;
-      const result = await orchestrator.submit(session.id, options, cwd);
+      const result = await orchestrator.submit(session.id, options, cwd, session.envVars);
       const assistant = repo.addMessage(
         {
           sessionId: session.id,

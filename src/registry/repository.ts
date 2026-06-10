@@ -7,6 +7,7 @@ interface SessionRow {
   title: string | null;
   started: number;
   cwd: string | null;
+  env_vars: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -40,14 +41,19 @@ export class Repository {
 
   // ---- Sessions ----
 
-  createSession(title: string | null, cwd: string | null, now: number): Session {
+  createSession(
+    title: string | null,
+    cwd: string | null,
+    envVars: Record<string, string> | null,
+    now: number,
+  ): Session {
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO sessions (id, title, started, cwd, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?)",
+        "INSERT INTO sessions (id, title, started, cwd, env_vars, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?, ?)",
       )
-      .run(id, title, cwd, now, now);
-    return { id, title, started: false, cwd, createdAt: now, updatedAt: now };
+      .run(id, title, cwd, envVars ? JSON.stringify(envVars) : null, now, now);
+    return { id, title, started: false, cwd, envVars, createdAt: now, updatedAt: now };
   }
 
   /** true se la sessione è già stata avviata su Claude (transcript creato). */
@@ -142,6 +148,7 @@ function mapSession(row: SessionRow): Session {
     title: row.title,
     started: row.started === 1,
     cwd: row.cwd,
+    envVars: row.env_vars ? (JSON.parse(row.env_vars) as Record<string, string>) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

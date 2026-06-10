@@ -19,6 +19,9 @@ export function openDatabase(dbPath: string): Database.Database {
   if (!cols.some((c) => c.name === "cwd")) {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   }
+  if (!cols.some((c) => c.name === "env_vars")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN env_vars TEXT");
+  }
   return db;
 }
 
@@ -29,6 +32,7 @@ function applySchema(db: Database.Database): void {
       title       TEXT,
       started     INTEGER NOT NULL DEFAULT 0,
       cwd         TEXT,
+      env_vars    TEXT,
       created_at  INTEGER NOT NULL,
       updated_at  INTEGER NOT NULL
     );

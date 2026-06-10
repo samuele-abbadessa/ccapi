@@ -37,6 +37,8 @@ export interface Session {
   started: boolean;
   /** Working directory della sessione (path assoluto). null solo per sessioni legacy pre-feature. */
   cwd: string | null;
+  /** Variabili d'ambiente extra applicate a ogni spawn (valori già coerciati a stringa). null se assenti. */
+  envVars: Record<string, string> | null;
   createdAt: number;
   updatedAt: number;
 }

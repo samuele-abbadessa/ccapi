@@ -59,7 +59,7 @@ CCAPI_PORT=4097 CCAPI_DB=.ccapi/proj2.db npm start
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check → `{ "status": "ok" }` |
-| `POST` | `/sessions` | Create session (optional body `{ title? }`) → 201 |
+| `POST` | `/sessions` | Create session (optional body `{ title?, cwd?, envVars? }`) → 201 |
 | `GET` | `/sessions` | List sessions (with runtime `status`: `idle`\|`busy`) |
 | `GET` | `/sessions/:id` | Session detail |
 | `PATCH` | `/sessions/:id` | Update title (body `{ title }`) |

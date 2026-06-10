@@ -42,6 +42,27 @@ describe("HTTP API", () => {
     expect(res.json()).toMatchObject({ title: "t", status: "idle" });
   });
 
+  it("crea una sessione con envVars coerciati e li espone in round-trip", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/sessions",
+      payload: { envVars: { A: "x", N: 7, ARR: [1, 2, 3], OBJ: { a: 1, b: 2 } } },
+    });
+    expect(res.statusCode).toBe(201);
+    const coerced = { A: "x", N: "7", ARR: "1,2,3", OBJ: "a;1,b;2" };
+    expect(res.json().envVars).toEqual(coerced);
+    // Persistenza + round-trip JSON: GET espone gli stessi envVars coerciati.
+    const id = res.json().id as string;
+    const got = await app.inject({ method: "GET", url: `/sessions/${id}` });
+    expect(got.json().envVars).toEqual(coerced);
+  });
+
+  it("sessione senza envVars espone envVars null", async () => {
+    const res = await app.inject({ method: "POST", url: "/sessions", payload: {} });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().envVars).toBeNull();
+  });
+
   it("404 su sessione inesistente", async () => {
     const res = await app.inject({ method: "GET", url: "/sessions/nope" });
     expect(res.statusCode).toBe(404);

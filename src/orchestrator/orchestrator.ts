@@ -5,6 +5,7 @@ import { AbortedError } from "./errors.js";
 interface QueueItem {
   opts: MessageOptions;
   cwd: string;
+  env: Record<string, string> | null;
   resolve: (r: RunResult) => void;
   reject: (e: Error) => void;
 }
@@ -28,10 +29,15 @@ export class Orchestrator {
   constructor(private readonly opts: OrchestratorOptions) {}
 
   /** Accoda un messaggio per la sessione; risolve quando elaborato. */
-  submit(sessionId: string, message: MessageOptions, cwd: string): Promise<RunResult> {
+  submit(
+    sessionId: string,
+    message: MessageOptions,
+    cwd: string,
+    env: Record<string, string> | null,
+  ): Promise<RunResult> {
     return new Promise<RunResult>((resolve, reject) => {
       const queue = this.queues.get(sessionId) ?? [];
-      queue.push({ opts: message, cwd, resolve, reject });
+      queue.push({ opts: message, cwd, env, resolve, reject });
       this.queues.set(sessionId, queue);
       this.tryNext(sessionId);
     });
@@ -74,7 +80,7 @@ export class Orchestrator {
     if (!item) return;
 
     const resume = this.opts.isStarted(sessionId);
-    const handle = runClaude(this.opts.claudeBin, item.cwd, sessionId, item.opts, resume);
+    const handle = runClaude(this.opts.claudeBin, item.cwd, sessionId, item.opts, resume, item.env);
     this.active.set(sessionId, handle);
 
     handle.promise.then(

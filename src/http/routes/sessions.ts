@@ -3,7 +3,7 @@ import type { Orchestrator } from "../../orchestrator/orchestrator.js";
 import type { Repository } from "../../registry/repository.js";
 import type { Session } from "../../types.js";
 import { resolveSessionCwd } from "../cwd.js";
-import { createSessionSchema, updateSessionSchema } from "../schemas.js";
+import { coerceEnvVars, createSessionSchema, updateSessionSchema } from "../schemas.js";
 
 interface Deps {
   repo: Repository;
@@ -19,6 +19,7 @@ function sessionView(s: Session, busy: boolean): Record<string, unknown> {
     title: s.title,
     status: busy ? "busy" : "idle",
     cwd: s.cwd,
+    envVars: s.envVars,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   };
@@ -34,7 +35,11 @@ export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
         .code(400)
         .send({ error: { code: "invalid_body", message: parsed.error.message } });
     }
-    const { title, cwd } = parsed.data;
+    const { title, cwd, envVars } = parsed.data;
+
+    // Coercia i valori a stringa e persisti il record già coerciato. null se assente/vuoto.
+    const envToSave =
+      envVars !== undefined && Object.keys(envVars).length > 0 ? coerceEnvVars(envVars) : null;
 
     let cwdToSave: string;
     if (detachedCwdBase === null) {
@@ -61,7 +66,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: Deps): void {
       cwdToSave = res.path;
     }
 
-    const session = repo.createSession(title ?? null, cwdToSave, now());
+    const session = repo.createSession(title ?? null, cwdToSave, envToSave, now());
     return reply.code(201).send(sessionView(session, false));
   });
 

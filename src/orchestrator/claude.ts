@@ -73,8 +73,13 @@ export function runClaude(
   sessionId: string,
   opts: MessageOptions,
   resume: boolean,
+  env: Record<string, string> | null,
 ): RunHandle {
-  const child = spawn(claudeBin, buildArgs(sessionId, opts, resume), { cwd });
+  // env non-null/non-vuoto: merge con process.env (gli envVars sovrascrivono/estendono).
+  // Altrimenti niente campo env → il processo eredita process.env di default.
+  const spawnOptions =
+    env && Object.keys(env).length > 0 ? { cwd, env: { ...process.env, ...env } } : { cwd };
+  const child = spawn(claudeBin, buildArgs(sessionId, opts, resume), spawnOptions);
 
   let stdout = "";
   let stderr = "";
