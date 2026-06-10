@@ -1,22 +1,34 @@
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 export interface Config {
   port: number;
   host: string;
   claudeBin: string;
+  /** Directory base di ccapi (path assoluto): contiene il db e gli eventuali file di stato. */
+  dataDir: string;
+  /** Path assoluto del database SQLite. */
   dbPath: string;
   /** Radice consentita per le cwd di sessione (path assoluto), oppure null se la feature è disabilitata. */
   detachedCwdBase: string | null;
 }
 
-export const DEFAULT_CONFIG: Config = {
+/** Default non risolti (prima dell'espansione di `~` e della risoluzione assoluta). */
+export const DEFAULTS = {
   port: 4096,
   host: "127.0.0.1",
   claudeBin: "claude",
-  dbPath: ".ccapi/ccapi.db",
-  detachedCwdBase: null,
-};
+  dataDir: "~/.ccapi",
+  dbFilename: "ccapi.db",
+} as const;
+
+/** Espande un eventuale `~`/`~/…` iniziale nella home dell'utente. */
+function expandHome(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/") || p.startsWith("~\\")) return join(homedir(), p.slice(2));
+  return p;
+}
 
 /**
  * Estrae `--detached-cwd` (a valore opzionale) da argv, perché parseArgs non
@@ -68,6 +80,13 @@ function resolveDetachedCwdBase(
   return null;
 }
 
+/** Risolve il path del db. `--db` assoluto è usato così com'è; se relativo è risolto su dataDir. */
+function resolveDbPath(raw: string | undefined, dataDir: string): string {
+  if (raw === undefined) return join(dataDir, DEFAULTS.dbFilename);
+  const expanded = expandHome(raw);
+  return isAbsolute(expanded) ? expanded : resolve(dataDir, expanded);
+}
+
 /**
  * Risolve la configurazione con precedenza: CLI flag > env > default.
  * @param argv argomenti (default: process.argv.slice(2))
@@ -84,19 +103,21 @@ export function resolveConfig(
       port: { type: "string" },
       host: { type: "string" },
       "claude-bin": { type: "string" },
+      "data-dir": { type: "string" },
       db: { type: "string" },
     },
     allowPositionals: false,
     strict: true,
   });
 
-  const port = pickNumber(values.port, env.CCAPI_PORT, DEFAULT_CONFIG.port, "port");
-  const host = values.host ?? env.CCAPI_HOST ?? DEFAULT_CONFIG.host;
-  const claudeBin = values["claude-bin"] ?? env.CCAPI_CLAUDE_BIN ?? DEFAULT_CONFIG.claudeBin;
-  const dbPath = values.db ?? env.CCAPI_DB ?? DEFAULT_CONFIG.dbPath;
+  const port = pickNumber(values.port, env.CCAPI_PORT, DEFAULTS.port, "port");
+  const host = values.host ?? env.CCAPI_HOST ?? DEFAULTS.host;
+  const claudeBin = values["claude-bin"] ?? env.CCAPI_CLAUDE_BIN ?? DEFAULTS.claudeBin;
+  const dataDir = resolve(expandHome(values["data-dir"] ?? env.CCAPI_DATA_DIR ?? DEFAULTS.dataDir));
+  const dbPath = resolveDbPath(values.db ?? env.CCAPI_DB, dataDir);
   const detachedCwdBase = resolveDetachedCwdBase(present, value, env);
 
-  return { port, host, claudeBin, dbPath, detachedCwdBase };
+  return { port, host, claudeBin, dataDir, dbPath, detachedCwdBase };
 }
 
 function pickNumber(

@@ -73,16 +73,19 @@ Every option can be set with a CLI flag or an environment variable. Precedence: 
 | Listen port | `--port` | `CCAPI_PORT` | `4096` |
 | Bind address | `--host` | `CCAPI_HOST` | `127.0.0.1` |
 | Claude binary | `--claude-bin` | `CCAPI_CLAUDE_BIN` | `claude` (from PATH) |
-| SQLite DB path | `--db` | `CCAPI_DB` | `.ccapi/ccapi.db` |
+| Data directory | `--data-dir` | `CCAPI_DATA_DIR` | `~/.ccapi` |
+| SQLite DB path | `--db` | `CCAPI_DB` | `<data-dir>/ccapi.db` |
 | Session cwd root | `--detached-cwd [base]` | `CCAPI_DETACHED_CWD` | `(disabled)` |
+
+The data directory holds the SQLite registry (and future state files) and defaults to `~/.ccapi`, so the server no longer creates a `.ccapi/` folder in whatever directory it is started from. A leading `~` is expanded to the user's home. `--db` is used as-is when absolute, otherwise it is resolved relative to `--data-dir` (e.g. `--db proj2.db` → `~/.ccapi/proj2.db`).
 
 The cwd root (`--detached-cwd`) is an **optional** value: with a path it enables the feature using that path as the allowed root; without a value it uses the server's cwd as the root. The root `/` is **rejected** (it would void the sandbox). If the root does not exist or is not a directory the server **will not start** (fail-fast).
 
 Examples:
 
 ```bash
-# Via environment variables
-CCAPI_PORT=4097 CCAPI_DB=.ccapi/project-b.db npm start
+# Via environment variables (a separate data dir per project)
+CCAPI_PORT=4097 CCAPI_DATA_DIR=~/.ccapi-project-b npm start
 
 # Via CLI flags (in production, with the compiled binary)
 node dist/index.js --port 4097 --host 0.0.0.0
@@ -406,7 +409,7 @@ cd ~/projects/B && CCAPI_PORT=4097 npm --prefix ~/ccapi start
 
 **Server shutdown.** The server handles a clean shutdown on `SIGINT`/`SIGTERM` (terminates child processes, closes the DB). Stop it with `Ctrl-C`. If you start it in the background, make sure to terminate the correct `tsx`/`node` process: killing only the wrapper may leave the child process listening on the port.
 
-**Persistence.** Sessions and messages are in SQLite (`.ccapi/ccapi.db` by default): they survive restarts. The `.ccapi/` folder is excluded from version control.
+**Persistence.** Sessions and messages are in SQLite (`~/.ccapi/ccapi.db` by default): they survive restarts. The data directory is configurable via `--data-dir`/`CCAPI_DATA_DIR`.
 
 **Model metadata.** On some CLI versions, `info.model` may remain `null` in JSON mode (while `usage` and `costUsd` work correctly).
 

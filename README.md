@@ -41,15 +41,20 @@ npm test          # run the test suite
 | Port | `--port` | `CCAPI_PORT` | `4096` |
 | Bind host | `--host` | `CCAPI_HOST` | `127.0.0.1` |
 | Claude binary | `--claude-bin` | `CCAPI_CLAUDE_BIN` | `claude` (from PATH) |
-| SQLite DB path | `--db` | `CCAPI_DB` | `.ccapi/ccapi.db` |
+| Data directory | `--data-dir` | `CCAPI_DATA_DIR` | `~/.ccapi` |
+| SQLite DB path | `--db` | `CCAPI_DB` | `<data-dir>/ccapi.db` |
 | Session cwd root | `--detached-cwd [base]` | `CCAPI_DETACHED_CWD` | `(disabled)` |
+
+The data directory (`~/.ccapi` by default) holds the SQLite registry regardless of where the server is started — so you no longer get a `.ccapi/` folder created in the current directory. `--db` is taken as-is when absolute, otherwise resolved relative to `--data-dir` (a `~` prefix expands to your home).
 
 With `--detached-cwd <base>` sessions can specify a working directory at creation time (the `cwd` field in `POST /sessions`) within `base`; without the flag all sessions use the server's cwd.
 
 To work on multiple projects simultaneously, start multiple instances on different ports.
 
 ```bash
-CCAPI_PORT=4097 CCAPI_DB=.ccapi/proj2.db npm start
+CCAPI_PORT=4097 CCAPI_DB=proj2.db npm start   # → ~/.ccapi/proj2.db
+# or a fully separate data directory:
+CCAPI_PORT=4097 CCAPI_DATA_DIR=~/.ccapi-proj2 npm start
 ```
 
 ---

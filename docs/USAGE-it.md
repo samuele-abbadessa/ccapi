@@ -73,16 +73,19 @@ Ogni opzione si imposta con un flag CLI o una variabile d'ambiente. Precedenza: 
 | Porta di ascolto | `--port` | `CCAPI_PORT` | `4096` |
 | Indirizzo di bind | `--host` | `CCAPI_HOST` | `127.0.0.1` |
 | Binario claude | `--claude-bin` | `CCAPI_CLAUDE_BIN` | `claude` (dal PATH) |
-| Path del DB SQLite | `--db` | `CCAPI_DB` | `.ccapi/ccapi.db` |
+| Directory dati | `--data-dir` | `CCAPI_DATA_DIR` | `~/.ccapi` |
+| Path del DB SQLite | `--db` | `CCAPI_DB` | `<data-dir>/ccapi.db` |
 | Radice cwd sessioni | `--detached-cwd [base]` | `CCAPI_DETACHED_CWD` | `(disabilitato)` |
+
+La directory dati contiene il registro SQLite (e i futuri file di stato) e ha come default `~/.ccapi`: così il server non crea più una cartella `.ccapi/` nella directory da cui lo avvii. Un `~` iniziale viene espanso nella home dell'utente. `--db` è usato così com'è se assoluto, altrimenti è risolto relativamente a `--data-dir` (es. `--db proj2.db` → `~/.ccapi/proj2.db`).
 
 La radice cwd (`--detached-cwd`) è un valore **opzionale**: con un path abilita la feature usando quel path come radice consentita; senza valore usa la cwd del server come radice. La radice `/` è **rifiutata** (svuoterebbe la sandbox). Se la radice non esiste o non è una directory il server **non si avvia** (fail-fast).
 
 Esempi:
 
 ```bash
-# Via variabili d'ambiente
-CCAPI_PORT=4097 CCAPI_DB=.ccapi/progetto-b.db npm start
+# Via variabili d'ambiente (una directory dati separata per progetto)
+CCAPI_PORT=4097 CCAPI_DATA_DIR=~/.ccapi-progetto-b npm start
 
 # Via flag CLI (in produzione, con il binario compilato)
 node dist/index.js --port 4097 --host 0.0.0.0
@@ -406,7 +409,7 @@ cd ~/progetti/B && CCAPI_PORT=4097 npm --prefix ~/ccapi start
 
 **Terminazione del server.** Il server gestisce uno shutdown pulito su `SIGINT`/`SIGTERM` (termina i processi figli, chiude il DB). Fermalo con `Ctrl-C`. Se lo avvii in background, assicurati di terminare il processo `tsx`/`node` corretto: un `kill` del solo wrapper può lasciare il processo figlio in ascolto sulla porta.
 
-**Persistenza.** Sessioni e messaggi sono in SQLite (`.ccapi/ccapi.db` per default): sopravvivono ai riavvii. La cartella `.ccapi/` è esclusa dal versionamento.
+**Persistenza.** Sessioni e messaggi sono in SQLite (`~/.ccapi/ccapi.db` per default): sopravvivono ai riavvii. La directory dati è configurabile con `--data-dir`/`CCAPI_DATA_DIR`.
 
 **Metadati del modello.** Su alcune versioni della CLI, `info.model` può restare `null` in JSON mode (mentre `usage` e `costUsd` funzionano).
 

@@ -1,10 +1,17 @@
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONFIG, resolveConfig } from "../src/config.js";
+import { DEFAULTS, resolveConfig } from "../src/config.js";
 
 describe("resolveConfig", () => {
   it("usa i default senza flag né env", () => {
-    expect(resolveConfig([], {})).toEqual(DEFAULT_CONFIG);
+    const cfg = resolveConfig([], {});
+    expect(cfg.port).toBe(DEFAULTS.port);
+    expect(cfg.host).toBe(DEFAULTS.host);
+    expect(cfg.claudeBin).toBe(DEFAULTS.claudeBin);
+    expect(cfg.dataDir).toBe(join(homedir(), ".ccapi"));
+    expect(cfg.dbPath).toBe(join(homedir(), ".ccapi", "ccapi.db"));
+    expect(cfg.detachedCwdBase).toBeNull();
   });
 
   it("env sovrascrive i default", () => {
@@ -20,6 +27,46 @@ describe("resolveConfig", () => {
 
   it("rifiuta una porta non valida", () => {
     expect(() => resolveConfig(["--port", "abc"], {})).toThrow();
+  });
+});
+
+describe("resolveConfig — dataDir e dbPath", () => {
+  it("default: dataDir = ~/.ccapi, dbPath = ~/.ccapi/ccapi.db", () => {
+    const cfg = resolveConfig([], {});
+    expect(cfg.dataDir).toBe(join(homedir(), ".ccapi"));
+    expect(cfg.dbPath).toBe(join(homedir(), ".ccapi", "ccapi.db"));
+  });
+
+  it("--data-dir con path assoluto", () => {
+    const cfg = resolveConfig(["--data-dir", "/tmp/dd"], {});
+    expect(cfg.dataDir).toBe(resolve("/tmp/dd"));
+    expect(cfg.dbPath).toBe(join(resolve("/tmp/dd"), "ccapi.db"));
+  });
+
+  it("CCAPI_DATA_DIR con espansione di ~", () => {
+    const cfg = resolveConfig([], { CCAPI_DATA_DIR: "~/altro" });
+    expect(cfg.dataDir).toBe(join(homedir(), "altro"));
+    expect(cfg.dbPath).toBe(join(homedir(), "altro", "ccapi.db"));
+  });
+
+  it("il flag --data-dir ha precedenza sull'env", () => {
+    const cfg = resolveConfig(["--data-dir", "/tmp/cli"], { CCAPI_DATA_DIR: "/tmp/env" });
+    expect(cfg.dataDir).toBe(resolve("/tmp/cli"));
+  });
+
+  it("--db relativo è risolto sulla data dir", () => {
+    const cfg = resolveConfig(["--data-dir", "/tmp/dd", "--db", "proj2.db"], {});
+    expect(cfg.dbPath).toBe(join(resolve("/tmp/dd"), "proj2.db"));
+  });
+
+  it("--db assoluto è usato così com'è", () => {
+    const cfg = resolveConfig(["--data-dir", "/tmp/dd", "--db", "/var/data/x.db"], {});
+    expect(cfg.dbPath).toBe(resolve("/var/data/x.db"));
+  });
+
+  it("CCAPI_DB relativo è risolto sulla data dir", () => {
+    const cfg = resolveConfig([], { CCAPI_DATA_DIR: "/tmp/dd", CCAPI_DB: "sub/p.db" });
+    expect(cfg.dbPath).toBe(join(resolve("/tmp/dd"), "sub", "p.db"));
   });
 });
 

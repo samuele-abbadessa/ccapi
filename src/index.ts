@@ -41,7 +41,8 @@ async function main(): Promise<void> {
 
   await app.listen({ port: config.port, host: config.host });
   app.log.info(
-    `ccapi in ascolto su http://${config.host}:${config.port} (cwd: ${process.cwd()}` +
+    `ccapi in ascolto su http://${config.host}:${config.port} ` +
+      `(data-dir: ${config.dataDir}, db: ${config.dbPath}` +
       `${detachedCwdBase ? `, detached-cwd base: ${detachedCwdBase}` : ""})`,
   );
 }
